@@ -6,8 +6,8 @@ import pickle
 if __name__ == "__main__":
     knowledge_graph = MovieGraph("dataset/14_graph.nt")
     predicates_path = "predicates.pkl"
-    # if not os.path.isfile(predicates_path):
-    #     knowledge_graph.saved_predicates("predicates.pkl")
+    if not os.path.isfile(predicates_path):
+        knowledge_graph.saved_predicates("predicates.pkl")
 
     chatbot = ChatBot(knowledge_graph)
     host = "https://speakeasy.ifi.uzh.ch"
