@@ -13,7 +13,7 @@ class MovieGraph(Graph):
         query_result = [str(s) for s, in self.query(query)]
         return query_result
 
-    def saved_predicates(self, path):
+    def save_predicates(self, path):
         assert path.endswith(".pkl")
         print("Saving predicates...")
         predicates = list(self.predicates())
