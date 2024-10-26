@@ -1,11 +1,10 @@
 import os.path
-from chatbot import ChatBot
-from movie_graph import MovieGraph
-import pickle
+from chatbot.chatbot import ChatBot
+from data.movie_graph import MovieGraph
 
 if __name__ == "__main__":
-    knowledge_graph = MovieGraph("dataset/14_graph.nt")
-    predicates_path = "predicates.pkl"
+    knowledge_graph = MovieGraph("data/14_graph.nt")
+    predicates_path = "data/predicates.pkl"
     if not os.path.isfile(predicates_path):
         knowledge_graph.save_predicates("predicates.pkl")
 
