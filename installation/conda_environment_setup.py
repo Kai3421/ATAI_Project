@@ -43,10 +43,10 @@ def main():
     env_name = env_data["name"]
 
     # create_conda_env(env_name)
-    # install_pytorch(env_name)
-    # whl_path = "speakeasypy-1.0.0-py3-none-any.whl"
-    # install_speakeasy(env_name, whl_path)
-    install_packages(env_name, environment_path)
+    # install_packages(env_name, environment_path)
+    install_pytorch(env_name)
+    whl_path = "speakeasypy-1.0.0-py3-none-any.whl"
+    install_speakeasy(env_name, whl_path)
 
 if __name__ == "__main__":
     main()

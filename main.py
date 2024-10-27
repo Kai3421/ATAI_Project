@@ -1,17 +1,18 @@
 import os.path
 from chatbot.chatbot import ChatBot
-from data.movie_graph import MovieGraph
+from data.knowledge_graph import KnowledgeGraph
+from language_processing.entity_relation_extraction import NamedEntityRecognizer, RelationExtractor
+
 
 if __name__ == "__main__":
-    knowledge_graph = MovieGraph("data/14_graph.nt")
-    predicates_path = "data/predicates.pkl"
-    if not os.path.isfile(predicates_path):
-        knowledge_graph.save_predicates("predicates.pkl")
+    knowledge_graph = KnowledgeGraph("data/14_graph.nt")
+    named_entity_recognizer = NamedEntityRecognizer()
+    relation_extractor = RelationExtractor(list(knowledge_graph.predicate_map.values()))
 
-    chatbot = ChatBot(knowledge_graph)
+    chatbot = ChatBot(knowledge_graph, named_entity_recognizer, relation_extractor)
     host = "https://speakeasy.ifi.uzh.ch"
     username = "playful-panther"
-    with open("password.txt") as file:
+    with open("chatbot/password.txt") as file:
         password = file.readline()
     chatbot.login(host=host, username=username, password=password)
     chatbot.run()

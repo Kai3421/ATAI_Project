@@ -2,11 +2,17 @@ import re
 import pyparsing
 from speakeasypy import Speakeasy
 
+from data.knowledge_graph import KnowledgeGraph
+from language_processing.entity_relation_extraction import NamedEntityRecognizer, RelationExtractor
+
+
 class ChatBot:
-    def __init__(self, knowledge_graph):
+    def __init__(self, knowledge_graph: KnowledgeGraph, entity_extractor: NamedEntityRecognizer, relation_extractor: RelationExtractor):
         self.speakeasy = None
         self.rooms = []
         self.knowledge_graph = knowledge_graph
+        self.entity_extractor = entity_extractor
+        self.relation_extractor = relation_extractor
 
     def login(self, host, username, password):
         self.speakeasy = Speakeasy(host=host, username=username, password=password)
@@ -26,14 +32,30 @@ class ChatBot:
                     self.process_reaction(reaction, room)
 
     def process_message(self, message_object, room):
-        if self.is_sparql_query(message_object.message):
+        print(f"\tProcessing message in room {room.my_alias}")
+        message_string = message_object.message
+        if self.is_sparql_query(message_string):
             try:
-                query_result = self.knowledge_graph.custom_sparql_query(message_object.message)
+                query_result = self.knowledge_graph.custom_sparql_query(message_string)
                 self.send_message(f"I found the following query result: \n{query_result}.", room)
             except pyparsing.exceptions.ParseException:
                 self.send_message("It looks like you're writing SPARQL, but that seems to be an invalid query.", room)
         else:
-            self.send_message(f"For sure.", room)
+            entities = self.entity_extractor.extract_entities(message_string)
+            entity_uris = self.knowledge_graph.match_multiple_entities(entities)
+            predicates = self.relation_extractor.extract_relations(message_string, entities)
+            predicates = self.knowledge_graph.extract_best_matches(predicates)
+            predicate_uris = self.knowledge_graph.match_multiple_predicates(predicates)
+
+            print(f"\tFound the following entities: \n\t{entities}\n\t{entity_uris}")
+            print(f"\tFound the following predicates: \n\t{predicates}\n\t{predicate_uris}")
+
+            results = []
+            for entity_uri in entity_uris:
+                for predicate_uri in predicate_uris:
+                    results.append(self.knowledge_graph.query_graph(entity_uri, predicate_uri, False))
+            response = f"I found the following in the knowledge graph: {results}"
+            self.send_message(response, room)
         room.mark_as_processed(message_object)
 
     def process_reaction(self, reaction, room):
