@@ -1,0 +1,7 @@
+__pycache__/
+.idea/
+
+test_rel_extraction.ipynb
+chatbot/password.txt
+data/14_graph.nt
+data/entity_embeds.npy
