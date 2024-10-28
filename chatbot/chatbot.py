@@ -105,4 +105,4 @@ class ChatBot:
         for original, replacement in replacements.items():
             message = message.replace(original, replacement)
 
-        return message.encode("utf-8", errors="replace").decode("utf-8")
+        return message.encode("latin-1", errors="replace").decode("latin-1")

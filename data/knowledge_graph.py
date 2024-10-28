@@ -27,9 +27,10 @@ class KnowledgeGraph(Graph):
         self.entity_uri_map = {}
         self._initialize_entity_and_relation_maps()
 
-        print("Finished movie graph setup.")
+        print("Finished knowledge graph setup.")
 
-    def _load_ids(self, path):
+    @staticmethod
+    def _load_ids(path):
         with open(path, 'r') as ifile:
             return {rdflib.term.URIRef(ent): int(idx) for idx, ent in csv.reader(ifile, delimiter='\t')}
 
@@ -46,34 +47,38 @@ class KnowledgeGraph(Graph):
     def match_multiple_entities(self, entities):
         uris = []
         for entity in entities:
-            uris.append(self.match_entity(entity))
+            uris += self.match_entity(entity)
         return uris
 
     def match_entity(self, entity):
         min_distance = float('inf')
-        matched_entity_uri = None
+        matched_entity_uris = []
         for uri, label in self.entity_uri_map.items():
             distance = editdistance.eval(entity, label)
             if distance < min_distance:
                 min_distance = distance
-                matched_entity_uri = uri
-        return matched_entity_uri
+                matched_entity_uris = [uri]
+            elif distance == min_distance:
+                matched_entity_uris.append(uri)
+        return matched_entity_uris
 
     def match_multiple_predicates(self, relations):
         uris = []
         for relation in relations:
-            uris.append(self.match_predicate(relation))
+            uris += self.match_predicate(relation)
         return uris
 
     def match_predicate(self, relation):
         min_distance = float('inf')
-        matched_predicate_uri = None
+        matched_predicate_uris = []
         for uri, label in self.relation_uri_map.items():
             distance = editdistance.eval(relation, label)
             if distance < min_distance:
                 min_distance = distance
-                matched_predicate_uri = uri
-        return matched_predicate_uri
+                matched_predicate_uris = [uri]
+            elif distance == min_distance:
+                matched_predicate_uris.append(uri)
+        return matched_predicate_uris
 
     @staticmethod
     def extract_best_matches(data):
@@ -90,11 +95,7 @@ class KnowledgeGraph(Graph):
         results = self.query(query)
         return [str(row.y) for row in results]
 
-    def custom_sparql_query(self, query):
-        query_result = [str(s) for s, in self.query(query)]
-        return query_result
-
-    def find_related_entities(self, entity: str, relation: str, top_n: int = 3):
+    def find_related_entities(self, entity: str, relation: str, top_n: int = 1):
         ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity))
         print(f"\tFound id {ent_id} for {entity}")
         rel_id = self._relation_to_id.get(rdflib.term.URIRef(relation))
@@ -106,7 +107,6 @@ class KnowledgeGraph(Graph):
 
         dist = pairwise_distances(lhs.reshape(1, -1), self.entity_embeddings).reshape(-1)
         most_likely = dist.argsort()
-        print(f"\t{most_likely}")
 
         results = pd.DataFrame([
             (
@@ -118,6 +118,7 @@ class KnowledgeGraph(Graph):
             for rank, idx in enumerate(most_likely[:top_n])],
             columns=('Entity', 'Label', 'Score', 'Rank')
         )
+        print(f"\t{results}")
         return results["Label"].tolist()
 
     def find_similar_entities(self, query_entity: str, top_n: int = 10):
@@ -138,14 +139,9 @@ class KnowledgeGraph(Graph):
             for rank, idx in enumerate(most_likely[:top_n])],
             columns=('Entity', 'Label', 'Score', 'Rank')
         )
+        print(f"\t{results}")
         return results
 
-    # def save_predicates(self, path):
-    #     assert path.endswith(".pkl")
-    #     print("Saving predicates...")
-    #     predicates = list(self.predicates())
-    #     with open(path, "wb") as f:
-    #         pickle.dump(predicates, f)
-    #     print(f"Finished saving predicates at {path}")
-
-
+    def custom_sparql_query(self, query):
+        query_result = [str(s) for s, in self.query(query)]
+        return query_result
