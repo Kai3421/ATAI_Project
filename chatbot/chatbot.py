@@ -3,17 +3,15 @@ import pyparsing
 from rdflib.compare import similar
 from speakeasypy import Speakeasy
 
-from data.graph_embeddings import GraphEmbeddings
 from data.knowledge_graph import KnowledgeGraph
 from language_processing.entity_relation_extraction import NamedEntityRecognizer, RelationExtractor
 
 
 class ChatBot:
-    def __init__(self, knowledge_graph: KnowledgeGraph, graph_embeddings: GraphEmbeddings, entity_extractor: NamedEntityRecognizer, relation_extractor: RelationExtractor):
+    def __init__(self, knowledge_graph: KnowledgeGraph, entity_extractor: NamedEntityRecognizer, relation_extractor: RelationExtractor):
         self.speakeasy = None
         self.rooms = []
         self.knowledge_graph = knowledge_graph
-        self.graph_embeddings = graph_embeddings
         self.entity_extractor = entity_extractor
         self.relation_extractor = relation_extractor
 
@@ -55,17 +53,15 @@ class ChatBot:
         print(f"\tFound the following predicates: \n\t{predicates}\n\t{predicate_uris}")
 
         query_results = []
+        embedding_results = []
         for entity_uri in entity_uris:
             for predicate_uri in predicate_uris:
                 query_results.append(self.knowledge_graph.query_graph(entity_uri, predicate_uri, False))
+                query_results.append(self.knowledge_graph.query_graph(entity_uri, predicate_uri, True))
+                embedding_results.append(self.knowledge_graph.find_related_entities(entity_uri, predicate_uri))
 
-        embedding_results = []
-        for entity in entities:
-            for predicate_uri in predicate_uris:
-                embedding_results.append(self.graph_embeddings.find_related_entities(entity, predicate_uri))
-
-        flat_query_results = [item for sublist in query_results for item in sublist] if query_results else []
-        flat_embedding_results = [item for sublist in embedding_results for item in sublist] if embedding_results else []
+        flat_query_results = list(set([item for sublist in query_results for item in sublist])) if query_results else []
+        flat_embedding_results = list(set([item for sublist in embedding_results for item in sublist])) if embedding_results else []
 
         if flat_query_results:
             query_response = "I found the following in the knowledge graph: " + ", ".join(flat_query_results)
@@ -109,4 +105,4 @@ class ChatBot:
         for original, replacement in replacements.items():
             message = message.replace(original, replacement)
 
-        return message.encode("latin-1", errors="replace").decode("latin-1")
+        return message.encode("utf-8", errors="replace").decode("utf-8")

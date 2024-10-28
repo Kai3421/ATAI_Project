@@ -1,26 +1,47 @@
+import csv
+
 import editdistance
+import numpy as np
+import pandas as pd
+import rdflib
 from rdflib import Graph, Namespace, URIRef
 import pickle
 
+from sklearn.metrics import pairwise_distances
+
+
 class KnowledgeGraph(Graph):
-    def __init__(self, source):
+    def __init__(self):
         super().__init__()
         print("Setting up knowledge graph...")
-        self.parse(source, format="turtle")
-        self.predicate_map = {}
-        self.node_map = {}
-        self._initialize_nodes_and_predicates()
+        self.parse("data/14_graph.nt", format="turtle")
+
+        self.entity_embeddings = np.load("data/entity_embeds.npy")
+        self.relation_embeddings = np.load("data/relation_embeds.npy")
+        self._entity_to_id = self._load_ids("data/entity_ids.del")
+        self._id_to_entity = {v: k for k, v in self._entity_to_id.items()}
+        self._relation_to_id = self._load_ids("data/relation_ids.del")
+        self._id_to_relation = {v: k for k, v in self._relation_to_id.items()}
+
+        self.relation_uri_map = {}
+        self.entity_uri_map = {}
+        self._initialize_entity_and_relation_maps()
+
         print("Finished movie graph setup.")
 
-    def _initialize_nodes_and_predicates(self):
+    def _load_ids(self, path):
+        with open(path, 'r') as ifile:
+            return {rdflib.term.URIRef(ent): int(idx) for idx, ent in csv.reader(ifile, delimiter='\t')}
+
+    def _initialize_entity_and_relation_maps(self):
         rdfs = Namespace("http://www.w3.org/2000/01/rdf-schema#")
         for node in self.all_nodes():
             if isinstance(node, URIRef) and self.value(node, rdfs.label):
-                self.node_map[node.toPython()] = self.value(node, rdfs.label).toPython()
+                self.entity_uri_map[node.toPython()] = self.value(node, rdfs.label).toPython()
 
         for s, p, o in self:
             if isinstance(p, URIRef) and self.value(p, rdfs.label):
-                self.predicate_map[p.toPython()] = self.value(p, rdfs.label).toPython()
+                self.relation_uri_map[p.toPython()] = self.value(p, rdfs.label).toPython()
 
     def match_multiple_entities(self, entities):
         uris = []
@@ -31,7 +52,7 @@ class KnowledgeGraph(Graph):
     def match_entity(self, entity):
         min_distance = float('inf')
         matched_entity_uri = None
-        for uri, label in self.node_map.items():
+        for uri, label in self.entity_uri_map.items():
             distance = editdistance.eval(entity, label)
             if distance < min_distance:
                 min_distance = distance
@@ -47,7 +68,7 @@ class KnowledgeGraph(Graph):
     def match_predicate(self, relation):
         min_distance = float('inf')
         matched_predicate_uri = None
-        for uri, label in self.predicate_map.items():
+        for uri, label in self.relation_uri_map.items():
             distance = editdistance.eval(relation, label)
             if distance < min_distance:
                 min_distance = distance
@@ -72,6 +93,52 @@ class KnowledgeGraph(Graph):
     def custom_sparql_query(self, query):
         query_result = [str(s) for s, in self.query(query)]
         return query_result
+
+    def find_related_entities(self, entity: str, relation: str, top_n: int = 3):
+        ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity))
+        print(f"\tFound id {ent_id} for {entity}")
+        rel_id = self._relation_to_id.get(rdflib.term.URIRef(relation))
+        print(f"\tFound id {rel_id} for {relation}")
+        if ent_id is None or rel_id is None:
+            return []
+
+        lhs = self.entity_embeddings[ent_id] + self.relation_embeddings[rel_id]
+
+        dist = pairwise_distances(lhs.reshape(1, -1), self.entity_embeddings).reshape(-1)
+        most_likely = dist.argsort()
+        print(f"\t{most_likely}")
+
+        results = pd.DataFrame([
+            (
+                self._id_to_entity[idx][len(rdflib.Namespace('http://www.wikidata.org/entity/')):],
+                self.entity_uri_map[str(self._id_to_entity[idx])],
+                dist[idx],
+                rank + 1
+            )
+            for rank, idx in enumerate(most_likely[:top_n])],
+            columns=('Entity', 'Label', 'Score', 'Rank')
+        )
+        return results["Label"].tolist()
+
+    def find_similar_entities(self, query_entity: str, top_n: int = 10):
+        ent_id = self._entity_to_id.get(self.entity_uri_map.get(query_entity, None))
+        if ent_id is None:
+            return []
+
+        dist = pairwise_distances(self.entity_embeddings[ent_id].reshape(1, -1), self.entity_embeddings).reshape(-1)
+        most_likely = dist.argsort()
+
+        results = pd.DataFrame([
+            (
+                self._id_to_entity[idx][len(rdflib.Namespace('http://www.wikidata.org/entity/')):],
+                self.entity_uri_map[self._id_to_entity[idx]],
+                dist[idx],
+                rank + 1
+            )
+            for rank, idx in enumerate(most_likely[:top_n])],
+            columns=('Entity', 'Label', 'Score', 'Rank')
+        )
+        return results
 
     # def save_predicates(self, path):
     #     assert path.endswith(".pkl")
