@@ -1,7 +1,6 @@
 import spacy
 from transformers import pipeline, AutoTokenizer, AutoModelForTokenClassification, AutoModelForSequenceClassification, AutoModelForSeq2SeqLM
 import editdistance
-import pickle
 
 
 class NamedEntityRecognizer:

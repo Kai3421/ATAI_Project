@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 import rdflib
 from rdflib import Graph, Namespace, URIRef
-import pickle
 
 from sklearn.metrics import pairwise_distances
 
