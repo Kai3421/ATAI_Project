@@ -5,3 +5,4 @@ test_rel_extraction.ipynb
 chatbot/password.txt
 data/14_graph.nt
 data/entity_embeds.npy
+data/predicate_aliases.json
