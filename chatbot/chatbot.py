@@ -1,6 +1,5 @@
 import re
 import pyparsing
-from rdflib.compare import similar
 from speakeasypy import Speakeasy
 
 from data.knowledge_graph import KnowledgeGraph
@@ -46,7 +45,6 @@ class ChatBot:
         entities = self.entity_extractor.extract_entities(message_string)
         entity_uris = self.knowledge_graph.match_multiple_entities(entities)
         predicates = self.relation_extractor.extract_relations(message_string, entities)
-        predicates = self.knowledge_graph.extract_best_matches(predicates)
         predicate_uris = self.knowledge_graph.match_multiple_predicates(predicates)
 
         print(f"\tFound the following entities: \n\t{entities}\n\t{entity_uris}")

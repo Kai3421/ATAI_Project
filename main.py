@@ -7,7 +7,7 @@ if __name__ == "__main__":
     knowledge_graph = KnowledgeGraph()
 
     named_entity_recognizer = NamedEntityRecognizer()
-    relation_extractor = RelationExtractor(list(knowledge_graph.relation_uri_map.values()))
+    relation_extractor = RelationExtractor()
 
     chatbot = ChatBot(knowledge_graph, named_entity_recognizer, relation_extractor)
     host = "https://speakeasy.ifi.uzh.ch"

@@ -1,4 +1,5 @@
 import csv
+import json
 
 import editdistance
 import numpy as np
@@ -39,9 +40,8 @@ class KnowledgeGraph(Graph):
             if isinstance(node, URIRef) and self.value(node, rdfs.label):
                 self.entity_uri_map[node.toPython()] = self.value(node, rdfs.label).toPython()
 
-        for s, p, o in self:
-            if isinstance(p, URIRef) and self.value(p, rdfs.label):
-                self.relation_uri_map[p.toPython()] = self.value(p, rdfs.label).toPython()
+        with open("data/predicate_aliases.json", "r") as json_file:
+            self.relation_uri_map = json.load(json_file)
 
     def match_multiple_entities(self, entities):
         uris = []
@@ -70,18 +70,20 @@ class KnowledgeGraph(Graph):
     def match_predicate(self, relation):
         min_distance = float('inf')
         matched_predicate_uris = []
-        for uri, label in self.relation_uri_map.items():
+
+        for label, uris in self.relation_uri_map.items():
+            if not isinstance(uris, list):
+                uris = [uris]
+
             distance = editdistance.eval(relation, label)
+
             if distance < min_distance:
                 min_distance = distance
-                matched_predicate_uris = [uri]
+                matched_predicate_uris = uris
             elif distance == min_distance:
-                matched_predicate_uris.append(uri)
-        return matched_predicate_uris
+                matched_predicate_uris.extend(uris)
 
-    @staticmethod
-    def extract_best_matches(data):
-        return [info['best_match'] for info in data.values()]
+        return matched_predicate_uris
 
     def query_graph(self, entity_uri, relation_uri, obj=True):
         rdfs = Namespace("http://www.w3.org/2000/01/rdf-schema#")
@@ -117,7 +119,6 @@ class KnowledgeGraph(Graph):
             for rank, idx in enumerate(most_likely[:top_n])],
             columns=('Entity', 'Label', 'Score', 'Rank')
         )
-        print(f"\t{results}")
         return results["Label"].tolist()
 
     def find_similar_entities(self, query_entity: str, top_n: int = 10):
@@ -138,7 +139,6 @@ class KnowledgeGraph(Graph):
             for rank, idx in enumerate(most_likely[:top_n])],
             columns=('Entity', 'Label', 'Score', 'Rank')
         )
-        print(f"\t{results}")
         return results
 
     def custom_sparql_query(self, query):
