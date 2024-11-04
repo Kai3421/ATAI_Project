@@ -5,7 +5,7 @@ import editdistance
 import numpy as np
 import pandas as pd
 import rdflib
-from rdflib import Graph, Namespace, URIRef
+from rdflib import Graph, Namespace, URIRef, Literal
 
 from sklearn.metrics import pairwise_distances
 
@@ -87,14 +87,25 @@ class KnowledgeGraph(Graph):
 
     def query_graph(self, entity_uri, relation_uri, obj=True):
         rdfs = Namespace("http://www.w3.org/2000/01/rdf-schema#")
-        query = (
-            f"SELECT DISTINCT ?x ?y WHERE {{ ?x <{relation_uri}> <{entity_uri}>. ?x <{rdfs.label}> ?y. }}"
-            if obj else
-            f"SELECT DISTINCT ?x ?y WHERE {{ <{entity_uri}> <{relation_uri}> ?x. ?x <{rdfs.label}> ?y. }}"
-        )
+
+        if obj:
+            query = f"SELECT DISTINCT ?x WHERE {{ ?x <{relation_uri}> <{entity_uri}>. }}"
+        else:
+            query = f"SELECT DISTINCT ?x WHERE {{ <{entity_uri}> <{relation_uri}> ?x. }}"
+
         print(f"\tExecuting query: \n\t{query}\n")
         results = self.query(query)
-        return [str(row.y) for row in results]
+
+        result_labels = []
+        for row in results:
+            if isinstance(row.x, Literal):
+                result_labels.append(str(row.x))
+            else:
+                label_query = f"SELECT DISTINCT ?label WHERE {{ <{row.x}> <{rdfs.label}> ?label. }}"
+                label_results = self.query(label_query)
+                result_labels.extend([str(label_row.label) for label_row in label_results])
+
+        return result_labels
 
     def find_related_entities(self, entity: str, relation: str, top_n: int = 1):
         ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity))
