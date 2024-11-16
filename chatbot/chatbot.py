@@ -21,15 +21,21 @@ class ChatBot:
     def run(self):
         print("Running the bot...")
         while True:
-            self.rooms = self.speakeasy.get_rooms()
-            for room in self.rooms:
-                if not room.initiated:
-                    self.send_message(f"Hi! Let's chat about movies.", room)
-                    room.initiated = True
-                for message in room.get_messages(only_partner=True, only_new=True):
-                    self.process_message(message, room)
-                for reaction in room.get_reactions(only_new=True):
-                    self.process_reaction(reaction, room)
+                self.rooms = self.speakeasy.get_rooms()
+                for room in self.rooms:
+                    if not room.initiated:
+                        self.send_message(f"Hi! Let's chat about movies.", room)
+                        room.initiated = True
+                    for message in room.get_messages(only_partner=True, only_new=True):
+                        try:
+                            self.process_message(message, room)
+                        except Exception as e:
+                            print(f"{e}")
+                            self.send_message(f"Something went wrong, please try again.", room)
+                            room.mark_as_processed(message)
+
+                    for reaction in room.get_reactions(only_new=True):
+                        self.process_reaction(reaction, room)
 
     def process_message(self, message_object, room):
         print(f"\tProcessing message in room {room.my_alias}")
@@ -46,9 +52,6 @@ class ChatBot:
         entity_uris = self.knowledge_graph.match_multiple_entities(entities)
         predicates = self.relation_extractor.extract_relations(message_string, entities)
         predicate_uris = self.knowledge_graph.match_multiple_predicates(predicates)
-
-        print(f"\tFound the following entities: \n\t{entities}\n\t{entity_uris}")
-        print(f"\tFound the following predicates: \n\t{predicates}\n\t{predicate_uris}")
 
         query_results = []
         embedding_results = []
