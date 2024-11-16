@@ -93,7 +93,7 @@ class KnowledgeGraph(Graph):
         else:
             query = f"SELECT DISTINCT ?x WHERE {{ <{entity_uri}> <{relation_uri}> ?x. }}"
 
-        print(f"\tExecuting query: \n\t{query}\n")
+        # print(f"\tExecuting query: \n\t{query}\n")
         results = self.query(query)
 
         result_labels = []
@@ -109,9 +109,7 @@ class KnowledgeGraph(Graph):
 
     def find_related_entities(self, entity: str, relation: str, top_n: int = 1):
         ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity))
-        print(f"\tFound id {ent_id} for {entity}")
         rel_id = self._relation_to_id.get(rdflib.term.URIRef(relation))
-        print(f"\tFound id {rel_id} for {relation}")
         if ent_id is None or rel_id is None:
             return []
 
