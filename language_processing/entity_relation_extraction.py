@@ -11,7 +11,7 @@ class NamedEntityRecognizer:
     def extract_entities(self, question):
         entities = self.pipeline(question)
         if not entities:
-            print("No entities found.")
+            print("\tNo entities found.")
             return []
 
         start = entities[0].get('start', 0)
