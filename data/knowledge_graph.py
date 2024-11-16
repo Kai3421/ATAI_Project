@@ -1,3 +1,4 @@
+import logging
 import csv
 import json
 
@@ -13,7 +14,8 @@ from sklearn.metrics import pairwise_distances
 class KnowledgeGraph(Graph):
     def __init__(self):
         super().__init__()
-        print("Setting up knowledge graph...")
+        self.logger = logging.getLogger("knowledge_graph")
+        self.logger.info("Setting up knowledge graph...")
         self.parse("data/14_graph.nt", format="turtle")
 
         self.entity_embeddings = np.load("data/entity_embeds.npy")
@@ -27,7 +29,7 @@ class KnowledgeGraph(Graph):
         self.entity_uri_map = {}
         self._initialize_entity_and_relation_maps()
 
-        print("Finished knowledge graph setup.")
+        self.logger.info("Finished setting up knowledge graph.")
 
     @staticmethod
     def _load_ids(path):
@@ -52,6 +54,7 @@ class KnowledgeGraph(Graph):
     def match_entity(self, entity):
         min_distance = float('inf')
         matched_entity_uris = []
+
         for uri, label in self.entity_uri_map.items():
             distance = editdistance.eval(entity, label)
             if distance < min_distance:
@@ -59,6 +62,7 @@ class KnowledgeGraph(Graph):
                 matched_entity_uris = [uri]
             elif distance == min_distance:
                 matched_entity_uris.append(uri)
+        self.logger.debug(f"Entity: '{entity}', URIs: {matched_entity_uris}")
         return matched_entity_uris
 
     def match_multiple_predicates(self, relations):
@@ -82,7 +86,7 @@ class KnowledgeGraph(Graph):
                 matched_predicate_uris = uris
             elif distance == min_distance:
                 matched_predicate_uris.extend(uris)
-
+        self.logger.debug(f"Relation: {relation}, URIs: {matched_predicate_uris}")
         return matched_predicate_uris
 
     def query_graph(self, entity_uri, relation_uri, obj=True):
@@ -93,7 +97,7 @@ class KnowledgeGraph(Graph):
         else:
             query = f"SELECT DISTINCT ?x WHERE {{ <{entity_uri}> <{relation_uri}> ?x. }}"
 
-        # print(f"\tExecuting query: \n\t{query}\n")
+        self.logger.debug(f"Executing query: {query}")
         results = self.query(query)
 
         result_labels = []
@@ -104,7 +108,7 @@ class KnowledgeGraph(Graph):
                 label_query = f"SELECT DISTINCT ?label WHERE {{ <{row.x}> <{rdfs.label}> ?label. }}"
                 label_results = self.query(label_query)
                 result_labels.extend([str(label_row.label) for label_row in label_results])
-
+        self.logger.debug(f"Results: {result_labels}")
         return result_labels
 
     def find_related_entities(self, entity: str, relation: str, top_n: int = 1):
