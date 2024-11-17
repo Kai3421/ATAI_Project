@@ -10,22 +10,19 @@ class NamedEntityRecognizer:
         self.logger = logging.getLogger("named_entity_recognizer")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForTokenClassification.from_pretrained(model_name)
-        self.pipeline = pipeline("ner", model=self.model, tokenizer=self.tokenizer, aggregation_strategy="simple", device="cpu")
+        self.pipeline = pipeline("ner", model=self.model, tokenizer=self.tokenizer, aggregation_strategy="average", device="cpu")
 
 
     def extract_entities(self, question):
         entities = self.pipeline(question)
+        self.logger.debug(f"Extracted entities: {entities}")
         if not entities:
             self.logger.debug("No entities found.")
             return []
 
-        start = entities[0].get('start', 0)
-        end = entities[-1].get('end', len(question))
-        extracted_span = question[start:end].strip()
+        words = [item['word'] for item in entities]
 
-        self.logger.debug(f"Extracted entities: {extracted_span}")
-
-        return [extracted_span]
+        return words
 
 
 class RelationExtractor:
