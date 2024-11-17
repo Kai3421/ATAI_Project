@@ -51,6 +51,16 @@ class ChatBot:
                 room.mark_as_processed(message_object)
             except ParseException:
                 pass  # ignore invalid SPARQL query, try the usual way instead.
+        elif "recommend" in message_string.lower():
+            entities = unique_flatten(self.entity_extractor.extract_entities(message_string))
+            entity_uris = unique_flatten(self.knowledge_graph.match_multiple_entities(entities))
+            similar_entities = []
+            for entity_uri in entity_uris:
+                similar_entities.append(self.knowledge_graph.find_similar_entities(entity_uri))
+            flat_results = unique_flatten(similar_entities)
+            response = "I would recommend the following movies: " + ", ".join(flat_results) + "."
+            self.send_message(response, room)
+            room.mark_as_processed(message_object)
         else:
             entities = unique_flatten(self.entity_extractor.extract_entities(message_string))
             entity_uris = unique_flatten(self.knowledge_graph.match_multiple_entities(entities))

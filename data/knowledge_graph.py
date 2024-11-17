@@ -134,8 +134,8 @@ class KnowledgeGraph(Graph):
         )
         return results["Label"].tolist()
 
-    def find_similar_entities(self, query_entity: str, top_n: int = 10):
-        ent_id = self._entity_to_id.get(self.entity_uri_map.get(query_entity, None))
+    def find_similar_entities(self, entity: str, top_n: int = 3):
+        ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity))
         if ent_id is None:
             return []
 
@@ -145,14 +145,15 @@ class KnowledgeGraph(Graph):
         results = pd.DataFrame([
             (
                 self._id_to_entity[idx][len(rdflib.Namespace('http://www.wikidata.org/entity/')):],
-                self.entity_uri_map[self._id_to_entity[idx]],
+                self.entity_uri_map[str(self._id_to_entity[idx])],
                 dist[idx],
                 rank + 1
             )
             for rank, idx in enumerate(most_likely[:top_n])],
             columns=('Entity', 'Label', 'Score', 'Rank')
         )
-        return results
+        return results["Label"].tolist()
+
 
     def custom_sparql_query(self, query):
         query_result = [str(s) for s, in self.query(query)]
