@@ -12,17 +12,56 @@ class NamedEntityRecognizer:
         self.model = AutoModelForTokenClassification.from_pretrained(model_name)
         self.pipeline = pipeline("ner", model=self.model, tokenizer=self.tokenizer, aggregation_strategy="average", device="cpu")
 
-
     def extract_entities(self, question):
-        entities = self.pipeline(question)
-        self.logger.debug(f"Extracted entities: {entities}")
-        if not entities:
+        found_entities = self.pipeline(question)
+        self.logger.debug(f"Extracted entities: {found_entities}")
+        if not found_entities:
             self.logger.debug("No entities found.")
             return []
 
-        words = [item['word'] for item in entities]
+        entities = [question[item['start']:item['end']] for item in found_entities]
+        entities = self.split_at_commas(entities)
+        entities = self.combine_articles(entities)
+        entities = self.capitalize(entities)
 
-        return words
+        return entities
+
+    def split_at_commas(self, entities):
+        result = []
+        for entity in entities:
+            split_parts = [part.strip() for part in entity.split(',')]
+            result.extend(split_parts)
+        return result
+
+    def combine_articles(self, entities):
+        articles = {"the", "a"}
+        result = []
+        i = 0
+
+        while i < len(entities):
+            word = entities[i]
+            if word.lower() in articles and i + 1 < len(entities):
+                result.append(f"{word} {entities[i + 1]}")
+                i += 2
+            else:
+                result.append(word)
+                i += 1
+
+        return result
+
+    def capitalize(self, entities):
+        lower_case_words = {"and", "the", "of", "in", "on", "at", "with", "a", "an", "for", "to", "by", "from"}
+
+        def capitalize_title(title):
+            words = title.split()
+            capitalized_words = []
+            for i, word in enumerate(words):
+                if i == 0 or i == len(words) - 1 or word.lower() not in lower_case_words:
+                    capitalized_words.append(word.capitalize())
+                else:
+                    capitalized_words.append(word.lower())
+            return " ".join(capitalized_words)
+        return [capitalize_title(title) for title in entities]
 
 
 class RelationExtractor:

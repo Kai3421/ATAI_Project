@@ -19,9 +19,12 @@ class KnowledgeGraph(Graph):
         self.parse("data/14_graph.nt", format="turtle")
 
         self.entity_embeddings = np.load("data/entity_embeds.npy")
+        self.movie_embeddings = np.load("data/movie_embeds.npy")
         self.relation_embeddings = np.load("data/relation_embeds.npy")
         self._entity_to_id = self._load_ids("data/entity_ids.del")
         self._id_to_entity = {v: k for k, v in self._entity_to_id.items()}
+        self._movie_to_id = self._load_ids("data/movie_ids.del")
+        self._id_to_movie = {v: k for k, v in self._movie_to_id.items()}
         self._relation_to_id = self._load_ids("data/relation_ids.del")
         self._id_to_relation = {v: k for k, v in self._relation_to_id.items()}
 
@@ -44,6 +47,12 @@ class KnowledgeGraph(Graph):
 
         with open("data/predicate_aliases.json", "r") as json_file:
             self.relation_uri_map = json.load(json_file)
+
+    def get_entity_label(self, entity_uri):
+        try:
+            return self.entity_uri_map[entity_uri]
+        except KeyError:
+            return ""
 
     def match_multiple_entities(self, entities):
         uris = []
@@ -111,49 +120,66 @@ class KnowledgeGraph(Graph):
         self.logger.debug(f"Results: {result_labels}")
         return result_labels
 
-    def find_related_entities(self, entity: str, relation: str, top_n: int = 1):
-        ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity))
-        rel_id = self._relation_to_id.get(rdflib.term.URIRef(relation))
+    def get_similar_entities(self, entity_embedding, embeddings, id_to_embedding, top_n=50):
+        """Finds the top_n most similar entities to the given entity embedding using the given embeddings and returns a
+        dataframe with the entity, label, score and rank. A lower score means the entity is more similar to the given entity."""
+        dist = pairwise_distances(entity_embedding.reshape(1, -1), embeddings).reshape(-1)
+        most_likely = dist.argsort()
+
+        similar_entities = pd.DataFrame([
+            (
+                id_to_embedding[id][len(rdflib.Namespace("http://www.wikidata.org/entity/")):],
+                self.get_entity_label(str(id_to_embedding[id])),
+                dist[id],
+                rank + 1
+            )
+            for rank, id in enumerate(most_likely[:top_n])],
+            columns=("Entity", "Label", "Score", "Rank")
+        )
+        return similar_entities
+
+    def find_related_entities(self, entity_uri, relation_uri, top_n=1):
+        """Finds the entities that are related to the given entity using the given relation and returns a list of the
+        top n best matches as labels."""
+        ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity_uri))
+        rel_id = self._relation_to_id.get(rdflib.term.URIRef(relation_uri))
         if ent_id is None or rel_id is None:
             return []
 
-        lhs = self.entity_embeddings[ent_id] + self.relation_embeddings[rel_id]
+        result = self.entity_embeddings[ent_id] + self.relation_embeddings[rel_id]
+        related_entities = self.get_similar_entities(result, self.entity_embeddings, self._id_to_entity, top_n)
 
-        dist = pairwise_distances(lhs.reshape(1, -1), self.entity_embeddings).reshape(-1)
-        most_likely = dist.argsort()
+        return related_entities["Label"].tolist()
 
-        results = pd.DataFrame([
-            (
-                self._id_to_entity[idx][len(rdflib.Namespace('http://www.wikidata.org/entity/')):],
-                self.entity_uri_map[str(self._id_to_entity[idx])],
-                dist[idx],
-                rank + 1
-            )
-            for rank, idx in enumerate(most_likely[:top_n])],
-            columns=('Entity', 'Label', 'Score', 'Rank')
-        )
-        return results["Label"].tolist()
-
-    def find_similar_entities(self, entity: str, top_n: int = 3):
-        ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity))
-        if ent_id is None:
+    def find_recommended_movies(self, entity_uris, top_n=5, top_n_per_movie=10):
+        similar_movies_list = []
+        for entity_uri in entity_uris:
+            ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity_uri))
+            if ent_id is None:
+                continue
+            similar_movies = self.get_similar_entities(self.entity_embeddings[ent_id], self.movie_embeddings, self._id_to_movie, top_n_per_movie)[["Entity", "Label", "Score"]]
+            similar_movies["Count"] = 0
+            similar_movies = similar_movies[similar_movies["Score"] != 0]
+            similar_movies_list.append(similar_movies)
+        if not similar_movies_list:
             return []
+        all_similar_movies = pd.concat(similar_movies_list, ignore_index=True)
 
-        dist = pairwise_distances(self.entity_embeddings[ent_id].reshape(1, -1), self.entity_embeddings).reshape(-1)
-        most_likely = dist.argsort()
+        # Remove original entities
+        entity_ids = [uri.split('/')[-1] for uri in entity_uris]
+        all_similar_movies = all_similar_movies[~all_similar_movies["Entity"].isin(entity_ids)]
 
-        results = pd.DataFrame([
-            (
-                self._id_to_entity[idx][len(rdflib.Namespace('http://www.wikidata.org/entity/')):],
-                self.entity_uri_map[str(self._id_to_entity[idx])],
-                dist[idx],
-                rank + 1
-            )
-            for rank, idx in enumerate(most_likely[:top_n])],
-            columns=('Entity', 'Label', 'Score', 'Rank')
-        )
-        return results["Label"].tolist()
+        # Count how many times the same movie appears
+        label_counts = all_similar_movies["Label"].value_counts()
+        all_similar_movies["Count"] = all_similar_movies["Label"].map(label_counts)
 
+        all_similar_movies = (all_similar_movies
+                              .loc[all_similar_movies.groupby("Label")["Score"].idxmin()] # remove duplicates, only keep the ones with lowest score
+                              .sort_values(by=["Count", "Score"], ascending=[False, True]) # sort by count first, then score
+                              .head(top_n) # only take the top n movies
+                              )
+
+        return all_similar_movies["Label"].tolist()
 
     def custom_sparql_query(self, query):
         query_result = [str(s) for s, in self.query(query)]
