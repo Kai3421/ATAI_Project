@@ -10,4 +10,4 @@ This will create a new conda environment called `atai`.~~ (Sorry it doesn't work
 5. Add the `predicate_aliases.json` file into the `data` folder
 
 ## Running
-Run `main.py`
+Run `main.py`. Make sure to run it in a console to accept user input!
