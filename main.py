@@ -1,7 +1,10 @@
 import logging
 import os
+
+from chatbot.chatroom_manager import ChatroomManager
+from data.crowd_data import CrowdData
+
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
-import sys
 from datetime import datetime
 from chatbot.chatbot import ChatBot
 from data.knowledge_graph import KnowledgeGraph
@@ -16,27 +19,23 @@ class Runner:
         self.knowledge_graph = KnowledgeGraph()
         self.named_entity_recognizer = NamedEntityRecognizer()
         self.relation_extractor = RelationExtractor()
-        self.chatbot = ChatBot(self.knowledge_graph, self.named_entity_recognizer, self.relation_extractor)
+        self.crowd_data = CrowdData()
+        self.chatbot = ChatBot(self.knowledge_graph, self.named_entity_recognizer, self.relation_extractor, self.crowd_data)
+        self.chatroom_manager = ChatroomManager(self.chatbot)
 
     def main(self):
-        running = True
-        while running:
-            try:
-                self.chatbot.run()
-            except Exception as error:
-                if isinstance(error, KeyboardInterrupt):
-                    raise
-                else:
-                    running = False
-                    self.logger.error("An unexpected error occurred.", exc_info=True)
-                    user_input = input("Stop or restart? ")
-                    if user_input.lower() == "restart":
-                        self.restart()
-                    else:
-                        self.stop()
-            except KeyboardInterrupt:
-                running = False
-                self.logger.info("Stopped by keyboard interrupt.")
+        try:
+            while True:
+                self.chatroom_manager.run()
+        except KeyboardInterrupt:
+            self.logger.info("Stopped by keyboard interrupt.")
+            user_input = input("Stop or restart? ")
+            if user_input.lower() == "restart":
+                self.restart()
+            else:
+                self.stop()
+        except Exception:
+                self.logger.error("An unexpected error occurred.", exc_info=True)
                 user_input = input("Stop or restart? ")
                 if user_input.lower() == "restart":
                     self.restart()
@@ -45,14 +44,11 @@ class Runner:
 
     def restart(self):
         self.logger.info("Restarting...")
-        self.chatbot.logout()
-        self.chatbot.login()
-        self.chatbot.clear()
+        self.chatroom_manager = ChatroomManager(self.chatbot)
         self.main()
 
     def stop(self):
         self.logger.info("Exiting...")
-        self.chatbot.logout()
 
     def setup_logger(self):
         """Sets up logging. Each log file is named after the date and time when the chatbot was started. The log files are

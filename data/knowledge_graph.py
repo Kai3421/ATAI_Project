@@ -1,14 +1,12 @@
 import logging
-import csv
-import json
-
 import editdistance
 import numpy as np
 import pandas as pd
 import rdflib
-from rdflib import Graph, Namespace, URIRef, Literal
-
+from rdflib import Graph, Namespace, Literal, URIRef
 from sklearn.metrics import pairwise_distances
+import pickle
+from thefuzz import process
 
 
 class KnowledgeGraph(Graph):
@@ -19,40 +17,31 @@ class KnowledgeGraph(Graph):
         self.parse("data/14_graph.nt", format="turtle")
 
         self.entity_embeddings = np.load("data/entity_embeds.npy")
-        self.movie_embeddings = np.load("data/movie_embeds.npy")
-        self.relation_embeddings = np.load("data/relation_embeds.npy")
-        self._entity_to_id = self._load_ids("data/entity_ids.del")
-        self._id_to_entity = {v: k for k, v in self._entity_to_id.items()}
-        self._movie_to_id = self._load_ids("data/movie_ids.del")
-        self._id_to_movie = {v: k for k, v in self._movie_to_id.items()}
-        self._relation_to_id = self._load_ids("data/relation_ids.del")
-        self._id_to_relation = {v: k for k, v in self._relation_to_id.items()}
+        self._entity_to_id = pickle.load(open("data/entity_to_id.pkl", "rb"))
+        self._id_to_entity = {id: entity for entity, id in self._entity_to_id.items()}
 
-        self.relation_uri_map = {}
-        self.entity_uri_map = {}
-        self._initialize_entity_and_relation_maps()
+        self.movie_embeddings = np.load("data/movie_embeds.npy")
+        self._movie_to_id = pickle.load(open("data/movie_to_id.pkl", "rb"))
+        self._id_to_movie = {id: movie for movie, id in self._movie_to_id.items()}
+
+        self.relation_embeddings = np.load("data/relation_embeds.npy")
+        self._relation_to_id = pickle.load(open("data/relation_to_id.pkl", "rb"))
+        self._id_to_relation = {id: relation for relation, id in self._relation_to_id.items()}
+
+        self._relation_to_uri = pickle.load(open("data/relation_to_uri.pkl", "rb"))
+        self._relation_to_uri = {relation: [uri] if isinstance(uri, str) else uri for relation, uri in self._relation_to_uri.items()}
+
+        with open("data/relation_to_uri.pkl", "wb") as file:
+            pickle.dump(self._relation_to_uri, file)
+
+        self._uri_to_entity = pickle.load(open("data/uri_to_entity.pkl", "rb"))
+        self._entity_to_uri = {entity: uri for uri, entity in self._uri_to_entity.items()}
 
         self.logger.info("Finished setting up knowledge graph.")
 
-    @staticmethod
-    def _load_ids(path):
-        with open(path, 'r') as ifile:
-            return {rdflib.term.URIRef(ent): int(idx) for idx, ent in csv.reader(ifile, delimiter='\t')}
-
-    def _initialize_entity_and_relation_maps(self):
-        rdfs = Namespace("http://www.w3.org/2000/01/rdf-schema#")
-        for node in self.all_nodes():
-            if isinstance(node, URIRef) and self.value(node, rdfs.label):
-                self.entity_uri_map[node.toPython()] = self.value(node, rdfs.label).toPython()
-
-        with open("data/predicate_aliases.json", "r") as json_file:
-            self.relation_uri_map = json.load(json_file)
-
-    def get_entity_label(self, entity_uri):
-        try:
-            return self.entity_uri_map[entity_uri]
-        except KeyError:
-            return ""
+    def execute_sparql_query(self, query):
+        query_result = [str(s) for s, in self.query(query)]
+        return query_result
 
     def match_multiple_entities(self, entities):
         uris = []
@@ -61,42 +50,54 @@ class KnowledgeGraph(Graph):
         return uris
 
     def match_entity(self, entity):
-        min_distance = float('inf')
-        matched_entity_uris = []
+        matched_entities = process.extract(entity, list(self._entity_to_uri.keys()), limit=2)
+        self.logger.debug(f"Matched entities to '{entity}': {matched_entities}")
+        return [self._entity_to_uri[entity] for entity, _ in matched_entities]
 
-        for uri, label in self.entity_uri_map.items():
-            distance = editdistance.eval(entity, label)
-            if distance < min_distance:
-                min_distance = distance
-                matched_entity_uris = [uri]
-            elif distance == min_distance:
-                matched_entity_uris.append(uri)
-        self.logger.debug(f"Entity: '{entity}', URIs: {matched_entity_uris}")
-        return matched_entity_uris
-
-    def match_multiple_predicates(self, relations):
+    def match_multiple_relations(self, relations):
         uris = []
         for relation in relations:
-            uris += self.match_predicate(relation)
+            uris += self.match_relation(relation)
         return uris
 
-    def match_predicate(self, relation):
-        min_distance = float('inf')
-        matched_predicate_uris = []
+    def match_relation(self, relation):
+        matched_relations = process.extract(relation, list(self._relation_to_uri.keys()), limit=2)
+        self.logger.debug(f"Matched relations to '{relation}': {matched_relations}")
+        return [self._relation_to_uri[entity] for entity, _ in matched_relations]
 
-        for label, uris in self.relation_uri_map.items():
-            if not isinstance(uris, list):
-                uris = [uris]
+    def find_recommended_movies(self, entity_uris, top_n=5, top_n_per_movie=10):
+        similar_movies_list = []
+        for entity_uri in entity_uris:
+            ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity_uri))
+            if ent_id is None:
+                continue
+            similar_movies = \
+                self.get_similar_entities(self.entity_embeddings[ent_id], self.movie_embeddings, self._id_to_movie,
+                                          top_n_per_movie)[["Entity", "Label", "Score"]]
+            similar_movies["Count"] = 0
+            similar_movies = similar_movies[similar_movies["Score"] != 0]
+            similar_movies_list.append(similar_movies)
+        if not similar_movies_list:
+            return []
+        all_similar_movies = pd.concat(similar_movies_list, ignore_index=True)
 
-            distance = editdistance.eval(relation, label)
+        # Remove original entities
+        entity_ids = [uri.split('/')[-1] for uri in entity_uris]
+        all_similar_movies = all_similar_movies[~all_similar_movies["Entity"].isin(entity_ids)]
 
-            if distance < min_distance:
-                min_distance = distance
-                matched_predicate_uris = uris
-            elif distance == min_distance:
-                matched_predicate_uris.extend(uris)
-        self.logger.debug(f"Relation: {relation}, URIs: {matched_predicate_uris}")
-        return matched_predicate_uris
+        # Count how many times the same movie appears
+        label_counts = all_similar_movies["Label"].value_counts()
+        all_similar_movies["Count"] = all_similar_movies["Label"].map(label_counts)
+
+        all_similar_movies = (all_similar_movies
+                              .loc[all_similar_movies.groupby("Label")[
+            "Score"].idxmin()]  # remove duplicates, only keep the ones with lowest score
+                              .sort_values(by=["Count", "Score"],
+                                           ascending=[False, True])  # sort by count first, then score
+                              .head(top_n)  # only take the top n movies
+                              )
+
+        return all_similar_movies["Label"].tolist()
 
     def query_graph(self, entity_uri, relation_uri, obj=True):
         rdfs = Namespace("http://www.w3.org/2000/01/rdf-schema#")
@@ -117,6 +118,7 @@ class KnowledgeGraph(Graph):
                 label_query = f"SELECT DISTINCT ?label WHERE {{ <{row.x}> <{rdfs.label}> ?label. }}"
                 label_results = self.query(label_query)
                 result_labels.extend([str(label_row.label) for label_row in label_results])
+
         self.logger.debug(f"Results: {result_labels}")
         return result_labels
 
@@ -151,36 +153,14 @@ class KnowledgeGraph(Graph):
 
         return related_entities["Label"].tolist()
 
-    def find_recommended_movies(self, entity_uris, top_n=5, top_n_per_movie=10):
-        similar_movies_list = []
-        for entity_uri in entity_uris:
-            ent_id = self._entity_to_id.get(rdflib.term.URIRef(entity_uri))
-            if ent_id is None:
-                continue
-            similar_movies = self.get_similar_entities(self.entity_embeddings[ent_id], self.movie_embeddings, self._id_to_movie, top_n_per_movie)[["Entity", "Label", "Score"]]
-            similar_movies["Count"] = 0
-            similar_movies = similar_movies[similar_movies["Score"] != 0]
-            similar_movies_list.append(similar_movies)
-        if not similar_movies_list:
-            return []
-        all_similar_movies = pd.concat(similar_movies_list, ignore_index=True)
+    def get_entity_label(self, entity_uri):
+        try:
+            return self._uri_to_entity[entity_uri]
+        except KeyError:
+            return ""
 
-        # Remove original entities
-        entity_ids = [uri.split('/')[-1] for uri in entity_uris]
-        all_similar_movies = all_similar_movies[~all_similar_movies["Entity"].isin(entity_ids)]
-
-        # Count how many times the same movie appears
-        label_counts = all_similar_movies["Label"].value_counts()
-        all_similar_movies["Count"] = all_similar_movies["Label"].map(label_counts)
-
-        all_similar_movies = (all_similar_movies
-                              .loc[all_similar_movies.groupby("Label")["Score"].idxmin()] # remove duplicates, only keep the ones with lowest score
-                              .sort_values(by=["Count", "Score"], ascending=[False, True]) # sort by count first, then score
-                              .head(top_n) # only take the top n movies
-                              )
-
-        return all_similar_movies["Label"].tolist()
-
-    def custom_sparql_query(self, query):
-        query_result = [str(s) for s, in self.query(query)]
-        return query_result
+    def get_relation_label(self, relation_uri):
+        try:
+            return self._uri_to_relation[relation_uri]
+        except KeyError:
+            return ""

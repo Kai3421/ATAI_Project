@@ -5,12 +5,14 @@ from transformers import logging as transformers_logging
 
 transformers_logging.set_verbosity_error()
 
+
 class NamedEntityRecognizer:
     def __init__(self, model_name="dslim/bert-base-NER"):
         self.logger = logging.getLogger("named_entity_recognizer")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForTokenClassification.from_pretrained(model_name)
-        self.pipeline = pipeline("ner", model=self.model, tokenizer=self.tokenizer, aggregation_strategy="average", device="cpu")
+        self.pipeline = pipeline("ner", model=self.model, tokenizer=self.tokenizer, aggregation_strategy="average",
+                                 device="cpu")
 
     def extract_entities(self, question):
         found_entities = self.pipeline(question)
@@ -61,6 +63,7 @@ class NamedEntityRecognizer:
                 else:
                     capitalized_words.append(word.lower())
             return " ".join(capitalized_words)
+
         return [capitalize_title(title) for title in entities]
 
 
@@ -70,9 +73,9 @@ class RelationExtractor:
         self.nlp = spacy.load('en_core_web_sm')
 
     def extract_relations(self, question, entities):
+        question = question.lower()
         for entity in entities:
-            question = question.replace(entity, "")
-
+            question = question.replace(entity.lower(), "")
         doc = self.nlp(question)
         possible_relations = [token.text for token in doc if token.pos_ in ['VERB', 'NOUN', 'PROPN']]
 
