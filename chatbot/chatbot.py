@@ -40,23 +40,23 @@ class ChatBot:
         has_sparql_symbols = bool(re.search(r"\?|<.*?>|\{.*?\}", message))
         return has_keyword and has_sparql_symbols
 
-    def execute_plain_sparql_query(self, message_string):
-        query_result = self.knowledge_graph.execute_sparql_query(message_string)
+    def execute_plain_sparql_query(self, message):
+        query_result = self.knowledge_graph.execute_sparql_query(message)
         response = f"I found the following query result: \n{query_result}."
         return response
 
-    def is_request_for_recommendation(self, message_string):
+    def is_request_for_recommendation(self, message):
         keywords = ["recommend", "suggest", "movies like", "should I watch", "similar", "any movies", "I like",
                     "I enjoy", "other movies", "I'm into"]
 
         for keyword in keywords:
-            if keyword.lower() in message_string.lower():
+            if keyword.lower() in message.lower():
                 return True
 
         return False
 
-    def make_recommendation(self, message_string):
-        _, entity_uris = self.get_entities_and_uris(message_string)
+    def make_recommendation(self, message):
+        _, entity_uris = self.get_entities_and_uris(message)
         results = self.unique_flatten(self.knowledge_graph.find_recommended_movies(entity_uris))[:3]
         response = "I would recommend the following movies: " + ", ".join(results) + "."
         return response
@@ -71,12 +71,13 @@ class ChatBot:
         return False
 
     def make_multimedia_response(self, message):
+        entities, entity_uris, relations, relation_uris = self.get_entity_and_relation_uris(message)
         image = "image:3640/rm215128064"
         response = f"I found the following images: \n{image}"
         return response
 
-    def try_to_answer_question(self, message_string):
-        entities, entity_uris, relations, relation_uris = self.get_entity_and_relation_uris(message_string)
+    def try_to_answer_question(self, message):
+        entities, entity_uris, relations, relation_uris = self.get_entity_and_relation_uris(message)
         try:
             query_results = []
             embedding_results = []
@@ -115,20 +116,20 @@ class ChatBot:
         except ParseException as error:
             response = f"Something went wrong with the query, please try again."
             self.logger.error(error)
-            self.logger.error(f"User message: {message_string}")
+            self.logger.error(f"User message: {message}")
 
         return response
 
-    def get_entities_and_uris(self, message_string):
-        entities = self.unique_flatten(self.entity_extractor.extract_entities(message_string))
+    def get_entities_and_uris(self, message):
+        entities = self.unique_flatten(self.entity_extractor.extract_entities(message))
         entity_uris = self.unique_flatten(self.knowledge_graph.match_multiple_entities(entities))
         return entities, entity_uris
 
-    def get_entity_and_relation_uris(self, message_string):
-        entities = self.entity_extractor.extract_entities(message_string)
+    def get_entity_and_relation_uris(self, message):
+        entities = self.entity_extractor.extract_entities(message)
         merged_entities = " ".join(entities)
         entity_uris = self.unique_flatten(self.knowledge_graph.match_entity(merged_entities))
-        relations = self.relation_extractor.extract_relations(message_string, entities)
+        relations = self.relation_extractor.extract_relations(message, entities)
         merged_relations = " ".join(relations)
         relation_uris = self.unique_flatten(self.knowledge_graph.match_relation(merged_relations))
         return merged_entities, entity_uris, merged_relations, relation_uris
