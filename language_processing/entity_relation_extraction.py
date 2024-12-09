@@ -14,19 +14,34 @@ class NamedEntityRecognizer:
         self.pipeline = pipeline("ner", model=self.model, tokenizer=self.tokenizer, aggregation_strategy="average",
                                  device="cpu")
 
-    def extract_entities(self, question):
+    def extract_single_entity(self, question):
+        found_entities = self.find_entities(question)
+        if found_entities:
+            start_idx = found_entities[0]['start']
+            end_idx = found_entities[-1]['end']
+            entity = question[start_idx:end_idx]
+            return entity
+        else:
+            return None
+
+    def extract_multiple_entities(self, question):
+        found_entities = self.find_entities(question)
+        if found_entities:
+            entities = [question[item['start']:item['end']] for item in found_entities]
+            entities = self.split_at_commas(entities)
+            entities = self.combine_articles(entities)
+            entities = self.capitalize(entities)
+            return entities
+        else:
+            return []
+
+    def find_entities(self, question):
         found_entities = self.pipeline(question)
         self.logger.debug(f"Extracted entities: {found_entities}")
         if not found_entities:
             self.logger.debug("No entities found.")
             return []
-
-        entities = [question[item['start']:item['end']] for item in found_entities]
-        entities = self.split_at_commas(entities)
-        entities = self.combine_articles(entities)
-        entities = self.capitalize(entities)
-
-        return entities
+        return found_entities
 
     def split_at_commas(self, entities):
         result = []
@@ -75,10 +90,13 @@ class RelationExtractor:
     def extract_relations(self, question, entities):
         question = question.lower()
         for entity in entities:
-            question = question.replace(entity.lower(), "")
+            if entity:
+                question = question.replace(entity.lower(), "")
         doc = self.nlp(question)
         possible_relations = [token.text for token in doc if token.pos_ in ['VERB', 'NOUN', 'PROPN']]
 
         self.logger.debug(f"Extracted relations: {possible_relations}")
 
-        return possible_relations
+        relations = " ".join(possible_relations)
+
+        return relations

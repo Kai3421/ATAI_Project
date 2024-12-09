@@ -1,5 +1,6 @@
 import logging
-import editdistance
+from typing import Iterable
+
 import numpy as np
 import pandas as pd
 import rdflib
@@ -29,7 +30,10 @@ class KnowledgeGraph(Graph):
         self._id_to_relation = {id: relation for relation, id in self._relation_to_id.items()}
 
         self._relation_to_uri = pickle.load(open("data/relation_to_uri.pkl", "rb"))
-        self._relation_to_uri = {relation: [uri] if isinstance(uri, str) else uri for relation, uri in self._relation_to_uri.items()}
+        self._uri_to_relation = {}
+        for relation, uris in self._relation_to_uri.items():
+            for uri in uris:
+                self._uri_to_relation[uri] = relation
 
         with open("data/relation_to_uri.pkl", "wb") as file:
             pickle.dump(self._relation_to_uri, file)
@@ -164,3 +168,16 @@ class KnowledgeGraph(Graph):
             return self._uri_to_relation[relation_uri]
         except KeyError:
             return ""
+
+    def flatten(self, nested_list):
+        """Recursive generator to flatten nested iterables (like lists, tuples, sets)."""
+        for x in nested_list:
+            if isinstance(x, Iterable) and not isinstance(x, (str, bytes)):
+                yield from self.flatten(x)
+            else:
+                yield x
+
+    def unique_flatten(self, nested_list):
+        """Takes a list and returns a flattened list with all duplicate elements removed."""
+        res = list(set(self.flatten(nested_list))) if nested_list else []
+        return res

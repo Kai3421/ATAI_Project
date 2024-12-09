@@ -62,7 +62,7 @@ class ChatBot:
         return response
 
     def is_multimedia_question(self, message):
-        keywords = ["show me", "picture", "look like", "image"]
+        keywords = ["show me", "picture", "look like", "image", "looks like"]
 
         for keyword in keywords:
             if keyword.lower() in message.lower():
@@ -89,7 +89,13 @@ class ChatBot:
                     embedding_results.append(self.knowledge_graph.find_related_entities(entity_uri, relation_uri))
                     crowd_result = self.crowd_data.get_result(entity_uri, relation_uri)
                     if crowd_result is not None:
-                        crowd_results.append(crowd_result)
+                        obj, inter_rater, votes = crowd_result
+                        label = self.knowledge_graph.get_entity_label(obj)
+                        if not label:
+                            label = self.knowledge_graph.get_relation_label(obj)
+                            if not label:
+                                label = obj
+                        crowd_results.append((label, inter_rater, votes))
 
             flat_query_results = self.unique_flatten(query_results)[:3]
             flat_embedding_results = self.unique_flatten(embedding_results)[:3]
@@ -107,8 +113,8 @@ class ChatBot:
             if crowd_results:
                 crowd_response = "Crowd sourcing suggests that the answer is "
                 for result in crowd_results:
-                    object, inter_rater, votes = result
-                    crowd_response += f"{object} with inter-rater agreement {inter_rater:.3f} and {votes}. "
+                    obj, inter_rater, votes = result
+                    crowd_response += f"{obj} with inter-rater agreement {inter_rater:.3f} and {votes}. "
             else:
                 crowd_response = "I found nothing through crowd sourcing."
 
@@ -121,18 +127,22 @@ class ChatBot:
         return response
 
     def get_entities_and_uris(self, message):
-        entities = self.unique_flatten(self.entity_extractor.extract_entities(message))
+        entities = self.unique_flatten(self.entity_extractor.extract_multiple_entities(message))
         entity_uris = self.unique_flatten(self.knowledge_graph.match_multiple_entities(entities))
         return entities, entity_uris
 
     def get_entity_and_relation_uris(self, message):
-        entities = self.entity_extractor.extract_entities(message)
-        merged_entities = " ".join(entities)
-        entity_uris = self.unique_flatten(self.knowledge_graph.match_entity(merged_entities))
-        relations = self.relation_extractor.extract_relations(message, entities)
-        merged_relations = " ".join(relations)
-        relation_uris = self.unique_flatten(self.knowledge_graph.match_relation(merged_relations))
-        return merged_entities, entity_uris, merged_relations, relation_uris
+        entity = self.entity_extractor.extract_single_entity(message)
+        if entity:
+            entity_uris = self.unique_flatten(self.knowledge_graph.match_entity(entity))
+        else:
+            entity_uris = []
+        relation = self.relation_extractor.extract_relations(message, [entity])
+        if relation:
+            relation_uris = self.unique_flatten(self.knowledge_graph.match_relation(relation))
+        else:
+            relation_uris = []
+        return entity, entity_uris, relation, relation_uris
 
     def flatten(self, nested_list):
         """Recursive generator to flatten nested iterables (like lists, tuples, sets)."""
