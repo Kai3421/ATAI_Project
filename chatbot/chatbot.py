@@ -26,6 +26,8 @@ class ChatBot:
         if response is None:
             if self.is_request_for_recommendation(message):
                 response = self.make_recommendation(message)
+            elif self.is_multimedia_question(message):
+                response = self.make_multimedia_response(message)
             else:
                 response = self.try_to_answer_question(message)
 
@@ -44,9 +46,8 @@ class ChatBot:
         return response
 
     def is_request_for_recommendation(self, message_string):
-        keywords = {"recommend", "suggest", "movies like", "should I watch", "similar", "any movies", "I like",
-                    "I enjoy",
-                    "other movies", "I'm into"}
+        keywords = ["recommend", "suggest", "movies like", "should I watch", "similar", "any movies", "I like",
+                    "I enjoy", "other movies", "I'm into"]
 
         for keyword in keywords:
             if keyword.lower() in message_string.lower():
@@ -58,6 +59,20 @@ class ChatBot:
         _, entity_uris = self.get_entities_and_uris(message_string)
         results = self.unique_flatten(self.knowledge_graph.find_recommended_movies(entity_uris))[:3]
         response = "I would recommend the following movies: " + ", ".join(results) + "."
+        return response
+
+    def is_multimedia_question(self, message):
+        keywords = ["show me", "picture", "look like", "image"]
+
+        for keyword in keywords:
+            if keyword.lower() in message.lower():
+                return True
+
+        return False
+
+    def make_multimedia_response(self, message):
+        image = "image:3640/rm215128064"
+        response = f"I found the following images: \n{image}"
         return response
 
     def try_to_answer_question(self, message_string):
