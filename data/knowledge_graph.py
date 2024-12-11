@@ -1,5 +1,5 @@
+import json
 import logging
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -35,11 +35,14 @@ class KnowledgeGraph(Graph):
             for uri in uris:
                 self._uri_to_relation[uri] = relation
 
-        with open("data/relation_to_uri.pkl", "wb") as file:
-            pickle.dump(self._relation_to_uri, file)
+        self._entity_to_uri = pickle.load(open("data/entity_to_uri.pkl", "rb"))
+        self._uri_to_entity = {uri: entity for entity, uri in self._entity_to_uri.items()}
 
-        self._uri_to_entity = pickle.load(open("data/uri_to_entity.pkl", "rb"))
-        self._entity_to_uri = {entity: uri for uri, entity in self._uri_to_entity.items()}
+        with open("data/entity_to_uri.pkl", "wb") as f:
+            pickle.dump(self._entity_to_uri, f)
+
+        with open('data/images.json') as f:
+            self.images_json = json.load(f)
 
         self.logger.info("Finished setting up knowledge graph.")
 
@@ -157,6 +160,22 @@ class KnowledgeGraph(Graph):
 
         return related_entities["Label"].tolist()
 
+    def get_imdb_id_from_entity(self, entity_uri):
+        query = f"""
+        SELECT ?imdbID WHERE {{
+            <{entity_uri}> <http://www.wikidata.org/prop/direct/P345> ?imdbID .
+        }}
+        """
+        results = self.execute_sparql_query(query)
+        return results[0] if results else None
+
+    def get_photos_from_imdb_id(self, imdb_id):
+        for element in self.images_json:
+            for cast_element in element["cast"]:
+                if str(cast_element) == str(imdb_id):
+                    photo = f"image:{element["img"].strip(".jpg")}"
+                    return photo
+
     def get_entity_label(self, entity_uri):
         try:
             return self._uri_to_entity[entity_uri]
@@ -168,16 +187,3 @@ class KnowledgeGraph(Graph):
             return self._uri_to_relation[relation_uri]
         except KeyError:
             return ""
-
-    def flatten(self, nested_list):
-        """Recursive generator to flatten nested iterables (like lists, tuples, sets)."""
-        for x in nested_list:
-            if isinstance(x, Iterable) and not isinstance(x, (str, bytes)):
-                yield from self.flatten(x)
-            else:
-                yield x
-
-    def unique_flatten(self, nested_list):
-        """Takes a list and returns a flattened list with all duplicate elements removed."""
-        res = list(set(self.flatten(nested_list))) if nested_list else []
-        return res

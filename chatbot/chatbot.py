@@ -2,6 +2,7 @@ import logging
 import re
 from typing import Iterable
 from pyparsing import ParseException
+import random
 
 
 class ChatBot:
@@ -56,13 +57,14 @@ class ChatBot:
         return False
 
     def make_recommendation(self, message):
-        _, entity_uris = self.get_entities_and_uris(message)
+        entities, entity_uris = self.get_entities_and_uris(message)
         results = self.unique_flatten(self.knowledge_graph.find_recommended_movies(entity_uris))[:3]
-        response = "I would recommend the following movies: " + ", ".join(results) + "."
+        # response = "I would recommend the following movies: " + ", ".join(results) + "."
+        response = f"Based on " + ", ".join(entities) + " I would recommend: " + ", ".join(results) + "."
         return response
 
     def is_multimedia_question(self, message):
-        keywords = ["show me", "picture", "look like", "image", "looks like"]
+        keywords = ["show me", "picture", "look like", "image", "looks like", "photo"]
 
         for keyword in keywords:
             if keyword.lower() in message.lower():
@@ -71,10 +73,17 @@ class ChatBot:
         return False
 
     def make_multimedia_response(self, message):
-        entities, entity_uris, relations, relation_uris = self.get_entity_and_relation_uris(message)
-        image = "image:3640/rm215128064"
-        response = f"I found the following images: \n{image}"
-        return response
+        entity, entity_uris, _, _ = self.get_entity_and_relation_uris(message)
+        for uri in entity_uris:
+            imdb_id = self.knowledge_graph.get_imdb_id_from_entity(uri)
+            if imdb_id:
+                photo = self.knowledge_graph.get_photos_from_imdb_id(imdb_id)
+                if photo:
+                    # response = f"Here is a picture of {entity}: {photo}"
+                    response = f"Here is an image of {entity}: \n{photo}"
+                    return response
+
+        return "No relevant photos found."
 
     def try_to_answer_question(self, message):
         entities, entity_uris, relations, relation_uris = self.get_entity_and_relation_uris(message)
@@ -101,24 +110,26 @@ class ChatBot:
             flat_embedding_results = self.unique_flatten(embedding_results)[:3]
 
             if flat_query_results:
-                query_response = "I found the following in the knowledge graph: " + ", ".join(flat_query_results) + "."
+                query_response = "Querying the knowledge graph, I found " + ", ".join(flat_query_results) + "."
             else:
                 query_response = "I found nothing in the knowledge graph."
 
             if flat_embedding_results:
-                embedding_response = "I found the following through embeddings: " + ", ".join(flat_embedding_results) + "."
+                # embedding_response = "\n\nI found the following through embeddings: " + ", ".join(flat_embedding_results) + "."
+                embedding_response = "\n\nI think it is: " + ", ".join(
+                    flat_embedding_results) + ". (Found through embeddings)"
             else:
-                embedding_response = "I found nothing through embeddings."
+                embedding_response = "\n\nI found nothing through embeddings."
 
             if crowd_results:
-                crowd_response = "Crowd sourcing suggests that the answer is "
+                crowd_response = "\n\nCrowd sourcing suggests that the answer is "
                 for result in crowd_results:
                     obj, inter_rater, votes = result
                     crowd_response += f"{obj} with inter-rater agreement {inter_rater:.3f} and {votes}. "
             else:
-                crowd_response = "I found nothing through crowd sourcing."
+                crowd_response = ""
 
-            response = f"{query_response} \n\n{embedding_response} \n\n{crowd_response}"
+            response = f"{query_response} {embedding_response} {crowd_response}"
         except ParseException as error:
             response = f"Something went wrong with the query, please try again."
             self.logger.error(error)
