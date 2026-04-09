@@ -1,0 +1,11 @@
+numpy
+pandas
+spacy
+transformers
+torch
+rdflib
+thefuzz
+pyparsing
+speakeasypy
+statsmodels
+scikit-learn
